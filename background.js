@@ -4,6 +4,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log('YouTube Tracker: Received message', message);
   if (message.action === 'videoDetected') {
     saveVideoInfo(message.videoInfo);
+  } else if (message.action === 'removeVideo') {
+    removeVideo(message.videoId);
   }
   return true; // Keeps the message channel open for asynchronous response
 });
@@ -27,6 +29,16 @@ function saveVideoInfo(videoInfo) {
       chrome.storage.local.get('videos', (checkResult) => {
         console.log('YouTube Tracker: Verification - current storage state', checkResult);
       });
+    });
+  });
+}
+
+function removeVideo(videoId) {
+  chrome.storage.local.get('videos', (result) => {
+    let videos = result.videos || {};
+    delete videos[videoId];
+    chrome.storage.local.set({ videos: videos }, () => {
+      console.log('YouTube Tracker: Video removed', videoId);
     });
   });
 }
