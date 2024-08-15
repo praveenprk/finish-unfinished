@@ -1,48 +1,64 @@
-console.log('YouTube Tracker: Background script loaded');
-
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log('YouTube Tracker: Received message', message);
   if (message.action === 'videoDetected') {
     saveVideoInfo(message.videoInfo);
-  } else if (message.action === 'removeVideo') {
-    removeVideo(message.videoId);
+  } else if (message.action === 'updateProgress') {
+    updateVideoProgress(message.videoId, message.currentTime);
   }
-  return true; // Keeps the message channel open for asynchronous response
+  return true;
 });
 
 function saveVideoInfo(videoInfo) {
-  console.log('YouTube Tracker: Attempting to save video info', videoInfo);
   chrome.storage.local.get('videos', (result) => {
-    console.log('YouTube Tracker: Current storage state', result);
     let videos = result.videos || {};
-    videos[videoInfo.id] = {
-      ...videoInfo,
-      lastWatched: Date.now()
-    };
-    chrome.storage.local.set({ videos: videos }, () => {
-      if (chrome.runtime.lastError) {
-        console.error('YouTube Tracker: Error saving data', chrome.runtime.lastError);
-      } else {
-        console.log('YouTube Tracker: Video info saved successfully', videos);
-      }
-      // Verify the data was actually saved
-      chrome.storage.local.get('videos', (checkResult) => {
-        console.log('YouTube Tracker: Verification - current storage state', checkResult);
+    if (!videos[videoInfo.id] || videos[videoInfo.id].duration !== videoInfo.duration) {
+      videos[videoInfo.id] = {
+        ...videoInfo,
+        lastWatched: Date.now(),
+        progress: 0
+      };
+      chrome.storage.local.set({ videos: videos }, () => {
+        console.log('YouTube Tracker: Video info saved successfully', videos[videoInfo.id]);
       });
-    });
+    }
   });
 }
 
-function removeVideo(videoId) {
+function updateVideoProgress(videoId, currentTime) {
   chrome.storage.local.get('videos', (result) => {
     let videos = result.videos || {};
-    delete videos[videoId];
-    chrome.storage.local.set({ videos: videos }, () => {
-      console.log('YouTube Tracker: Video removed', videoId);
-    });
+    if (videos[videoId]) {
+      videos[videoId].progress = currentTime;
+      videos[videoId].lastWatched = Date.now();
+      chrome.storage.local.set({ videos: videos }, () => {
+        console.log('YouTube Tracker: Video progress updated', videos[videoId]);
+      });
+    }
   });
 }
 
-chrome.runtime.onInstalled.addListener(() => {
-  console.log('YouTube Tracker: Extension installed');
+function checkUnwatchedVideos() {
+  chrome.storage.local.get('videos', (result) => {
+    const videos = result.videos || {};
+    const unwatched = Object.values(videos).filter(v => v.progress / v.duration < 0.9); // Consider videos watched less than 90% as unwatched
+    if (unwatched.length > 0) {
+      chrome.notifications.create({
+        type: 'basic',
+        iconUrl: 'icon.png',
+        title: 'Unwatched Videos Reminder',
+        message: `You have ${unwatched.length} unwatched or partially watched videos. Don't forget to finish them!`
+      });
+    }
+  });
+}
+
+// Run checkUnwatchedVideos every hour
+chrome.alarms.create('checkUnwatched', { periodInMinutes: 60 });
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === 'checkUnwatched') {
+    checkUnwatchedVideos();
+  }
 });
+
+// Also check when the browser starts
+chrome.runtime.onStartup.addListener(checkUnwatchedVideos);
