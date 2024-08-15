@@ -52,8 +52,12 @@ function checkUnwatchedVideos() {
       chrome.notifications.create({
         type: 'basic',
         title: 'Unwatched Videos Reminder',
-        message: `You have ${unwwatched.length} unwatched or partially watched videos.`,
+        message: `You have ${unwatched.length} unwatched or partially watched videos.`,
         iconUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg=='
+      }, (notificationId) => {
+        if (chrome.runtime.lastError) {
+          console.error('Notification error:', chrome.runtime.lastError);
+        }
       });
     }
   });
@@ -67,3 +71,6 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 });
 
 chrome.runtime.onStartup.addListener(checkUnwatchedVideos);
+
+// For testing purposes, you can uncomment the following line to check for unwatched videos immediately
+setTimeout(checkUnwatchedVideos, 5000);
