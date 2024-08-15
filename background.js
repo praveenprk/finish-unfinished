@@ -1,5 +1,6 @@
+let videoProgressCache = {};
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  console.log('YouTube Tracker: Received message', message);
   if (message.action === 'videoDetected') {
     saveVideoInfo(message.videoInfo);
   } else if (message.action === 'updateProgress') {
@@ -17,48 +18,52 @@ function saveVideoInfo(videoInfo) {
         lastWatched: Date.now(),
         progress: 0
       };
-      chrome.storage.local.set({ videos: videos }, () => {
-        console.log('YouTube Tracker: Video info saved successfully', videos[videoInfo.id]);
-      });
+      chrome.storage.local.set({ videos: videos });
     }
   });
 }
 
 function updateVideoProgress(videoId, currentTime) {
-  chrome.storage.local.get('videos', (result) => {
-    let videos = result.videos || {};
-    if (videos[videoId]) {
-      videos[videoId].progress = currentTime;
-      videos[videoId].lastWatched = Date.now();
-      chrome.storage.local.set({ videos: videos }, () => {
-        console.log('YouTube Tracker: Video progress updated', videos[videoId]);
-      });
-    }
-  });
+  if (!videoProgressCache[videoId]) {
+    videoProgressCache[videoId] = { lastUpdate: 0, progress: 0 };
+  }
+  
+  const now = Date.now();
+  if (now - videoProgressCache[videoId].lastUpdate > 5000 || 
+      Math.abs(currentTime - videoProgressCache[videoId].progress) > 5) {
+    videoProgressCache[videoId] = { lastUpdate: now, progress: currentTime };
+    
+    chrome.storage.local.get('videos', (result) => {
+      let videos = result.videos || {};
+      if (videos[videoId]) {
+        videos[videoId].progress = currentTime;
+        videos[videoId].lastWatched = now;
+        chrome.storage.local.set({ videos: videos });
+      }
+    });
+  }
 }
 
 function checkUnwatchedVideos() {
   chrome.storage.local.get('videos', (result) => {
     const videos = result.videos || {};
-    const unwatched = Object.values(videos).filter(v => v.progress / v.duration < 0.9); // Consider videos watched less than 90% as unwatched
+    const unwatched = Object.values(videos).filter(v => v.progress / v.duration < 0.9);
     if (unwatched.length > 0) {
       chrome.notifications.create({
         type: 'basic',
-        iconUrl: 'icon.png',
         title: 'Unwatched Videos Reminder',
-        message: `You have ${unwatched.length} unwatched or partially watched videos. Don't forget to finish them!`
+        message: `You have ${unwwatched.length} unwatched or partially watched videos.`,
+        iconUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg=='
       });
     }
   });
 }
 
-// Run checkUnwatchedVideos every hour
-chrome.alarms.create('checkUnwatched', { periodInMinutes: 60 });
+chrome.alarms.create('checkUnwatched', { periodInMinutes: 1 });
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === 'checkUnwatched') {
     checkUnwatchedVideos();
   }
 });
 
-// Also check when the browser starts
 chrome.runtime.onStartup.addListener(checkUnwatchedVideos);
